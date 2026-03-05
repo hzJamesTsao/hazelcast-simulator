@@ -15,21 +15,27 @@
  */
 package com.hazelcast.simulator.tests.cp;
 
+import static org.junit.Assert.assertTrue;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
+
 import com.hazelcast.collection.IList;
 import com.hazelcast.cp.CPMap;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.test.BaseThreadState;
 import com.hazelcast.simulator.test.annotations.AfterRun;
+import com.hazelcast.simulator.test.annotations.Prepare;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.TimeStep;
 import com.hazelcast.simulator.test.annotations.Verify;
 import com.hazelcast.simulator.tests.cp.helpers.CpMapOperationCounter;
 import com.hazelcast.simulator.utils.GeneratorUtils;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import static org.junit.Assert.assertTrue;
 
 /**
  * This test is running as part of release verification simulator test. Hence every change in this class should be
@@ -48,6 +54,12 @@ public class CPMapTest extends HazelcastTest {
     public int valuesCount = 100;
     // size in bytes for each key's associated value
     public int valueSizeBytes = 100;
+    // whether to pre-load entries
+    public boolean preloadEntries = false;
+    // number of threads to use for preloading entries
+    public int preloadThreads = 20;    
+    // used to control amount of overlapping keys between preload and test key space (useful to test putIfAbsent)
+    public int preloadKeyOffset = 0;    
 
     private List<CPMap<Integer, byte[]>> mapReferences;
 
@@ -70,6 +82,59 @@ public class CPMapTest extends HazelcastTest {
         }
 
         operationCounterList = targetInstance.getList(name + "Report");
+    }
+
+@Prepare(global = true)
+    public void prepare() {
+        
+        for (int i = 0; i < maps; i++) {
+
+            //CPMap<Integer, byte[]> curMap = targetInstance.getCPSubsystem().getMap(mapName);
+            CPMap<Integer, byte[]> curMap = mapReferences.get(i);
+
+
+            if (preloadEntries) {
+                System.out.println("--> Preloading " + keys + " entries for CPMap " + curMap.getName());
+                List<Callable<Object>> tasks = new ArrayList<>(10000);
+                
+                int batchCount = keys / preloadThreads;
+                for (int x=0; x < preloadThreads; x++) {
+                    int startKey = x * batchCount;
+                    int endKey = startKey + batchCount;
+                    tasks.add(Executors.callable(() -> loadEntriestoCPMap(curMap.getName(), startKey, endKey)));
+                    //CompletableFuture.runAsync(() -> loadEntriestoCPMap(curMap.getName(), startKey, endKey)).join();
+                }
+
+                ExecutorService executorService = Executors.newFixedThreadPool(preloadThreads /*Runtime.getRuntime().availableProcessors()*/);
+                try {
+                    executorService.invokeAll(tasks);
+                } catch (InterruptedException e) {
+                    System.err.println("INVOKE ALL ERROR = " + e.getMessage());
+                }
+
+                System.out.println("Finsihed loading keys into " + curMap.getName());
+
+
+            } else {
+                System.out.println("--> Skip preloading entries for CPMap " + curMap.getName());
+            }
+
+        }
+    } 
+                    
+    private void loadEntriestoCPMap(String mapName, int startKey, int endKey) { 
+
+        // not sure whether different threads can share the same cpMap reference, having separate ones to be safe
+        CPMap<Integer, byte[]> cpmap = targetInstance.getCPSubsystem().getMap(mapName);
+
+        for (int key = startKey; key < endKey; key++) {
+            byte[] value = values[ThreadLocalRandom.current().nextInt(valuesCount)];
+            cpmap.set(key+preloadKeyOffset,value);
+            if (key % 10000 == 0) {
+                System.out.println("... keys loaded  = " + key);
+            }
+        }
+
     }
 
     private byte[][] createValues() {
