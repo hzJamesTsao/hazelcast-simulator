@@ -94,10 +94,16 @@ public class LongByteArrayMapTest extends HazelcastTest {
     public void prepare() {
         // We only need to use one instance to prepare the maps
         for (IMap<Long, byte[]> map : maps.get(0)) {
+            
+            System.out.println("Preparing map " + map.getName() + " with " + keyDomain + " keys" );
+
             Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(map);
             for (long key = 0; key < keyDomain; key++) {
                 byte[] value = values[random.nextInt(valueCount)];
                 streamer.pushEntry(key, value);
+                if (key % 100000 == 0) {
+                    System.out.println("... keys loaded  = " + key);
+                }
             }
             streamer.await();
         }
@@ -141,6 +147,11 @@ public class LongByteArrayMapTest extends HazelcastTest {
     public byte[] put(ThreadState state) {
         return getRandomMap().put(state.randomKey(), state.randomValue());
     }
+
+    @TimeStep(prob = 0)
+    public byte[] putIfAbsent(ThreadState state) {
+        return getRandomMap().putIfAbsent(state.randomKey(), state.randomValue());
+    }   
 
     /**
      * Ensures that the key does not exist before adding it again.
