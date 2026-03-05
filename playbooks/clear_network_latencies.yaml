@@ -1,0 +1,9 @@
+latency_profiles:
+  relationships:
+    - source: dc1
+      target: dc2
+      latency: 0
+    - source: dc2
+      target: dc1
+      latency: 0      
+  default_latency: 0
