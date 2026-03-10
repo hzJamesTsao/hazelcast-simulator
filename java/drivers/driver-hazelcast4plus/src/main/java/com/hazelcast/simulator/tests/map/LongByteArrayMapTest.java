@@ -57,6 +57,8 @@ public class LongByteArrayMapTest extends HazelcastTest {
     public int pipelineIterations = 100;
     public int getAllSize = 5;
     public int mapCount = 1;
+    public boolean preloadKeys = true;
+
     /**
      * The fixed keys to be used in the test. If set to 0, all
      * keys are random. Currently the only {@code get} operation uses it.
@@ -93,19 +95,21 @@ public class LongByteArrayMapTest extends HazelcastTest {
     @Prepare(global = true)
     public void prepare() {
         // We only need to use one instance to prepare the maps
-        for (IMap<Long, byte[]> map : maps.get(0)) {
-            
-            System.out.println("Preparing map " + map.getName() + " with " + keyDomain + " keys" );
+        if (preloadKeys) {
+            for (IMap<Long, byte[]> map : maps.get(0)) {
+                
+                System.out.println("Preparing map " + map.getName() + " with " + keyDomain + " keys" );
 
-            Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(map);
-            for (long key = 0; key < keyDomain; key++) {
-                byte[] value = values[random.nextInt(valueCount)];
-                streamer.pushEntry(key, value);
-                if (key % 100000 == 0) {
-                    System.out.println("... keys loaded  = " + key);
+                Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(map);
+                for (long key = 0; key < keyDomain; key++) {
+                    byte[] value = values[random.nextInt(valueCount)];
+                    streamer.pushEntry(key, value);
+                    if (key % 100000 == 0) {
+                        System.out.println("... keys loaded  = " + key);
+                    }
                 }
+                streamer.await();
             }
-            streamer.await();
         }
     }
 
